@@ -1,0 +1,327 @@
+# Spring Boot REST API Implementation Guide
+
+## Prerequisites
+
+### Required Software
+- Java JDK 17 or higher
+- Maven
+- MySQL 8.x
+- Text editor (like nano, vim, etc.)
+
+### Installation Commands
+
+```bash
+# Check Java version
+java -version
+
+# Check Maven version
+mvn -version
+
+# Check MySQL version
+mysql --version
+```
+
+## Project Setup
+
+### 1. Create Project Structure
+```bash
+mkdir todolist
+cd todolist
+mkdir -p src/main/java/com/example/todolist/{controller,model,repository,service}
+mkdir -p src/main/resources
+```
+
+### 2. Configure Maven (pom.xml)
+Create `pom.xml` in root directory:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+    </parent>
+    
+    <groupId>com.example</groupId>
+    <artifactId>todolist</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+## Database Configuration
+
+### 1. MySQL Setup
+```bash
+# Access MySQL
+sudo mysql
+
+# Create database
+CREATE DATABASE todolist;
+
+# Set root password (if not already set)
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'password';
+FLUSH PRIVILEGES;
+```
+mysql -u root -p
+
+### 2. Application Properties
+Create `src/main/resources/application.properties`:
+```properties
+# MySQL Configuration
+spring.datasource.url=jdbc:mysql://localhost:3306/todolist?useSSL=false&serverTimezone=UTC
+spring.datasource.username=root
+spring.datasource.password=password
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+# JPA Configuration
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
+```
+
+## Project Structure
+
+### 1. Main Application Class
+File: `src/main/java/com/example/todolist/TodoListApplication.java`
+```java
+package com.example.todolist;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class TodoListApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(TodoListApplication.class, args);
+    }
+}
+```
+
+### 2. Model
+File: `src/main/java/com/example/todolist/model/Task.java`
+```java
+package com.example.todolist.model;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class Task {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String title;
+    private String description;
+    private boolean completed;
+}
+```
+
+### 3. Repository
+File: `src/main/java/com/example/todolist/repository/TaskRepository.java`
+```java
+package com.example.todolist.repository;
+
+import com.example.todolist.model.Task;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface TaskRepository extends JpaRepository<Task, Long> {
+}
+```
+
+### 4. Service
+File: `src/main/java/com/example/todolist/service/TaskService.java`
+```java
+package com.example.todolist.service;
+
+import com.example.todolist.model.Task;
+import com.example.todolist.repository.TaskRepository;
+import org.springframework.stereotype.Service;
+import java.util.List;
+
+@Service
+public class TaskService {
+    private final TaskRepository taskRepository;
+
+    public TaskService(TaskRepository taskRepository) {
+        this.taskRepository = taskRepository;
+    }
+
+    public List<Task> getAllTasks() {
+        return taskRepository.findAll();
+    }
+
+    public Task getTaskById(Long id) {
+        return taskRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Task not found"));
+    }
+
+    public Task createTask(Task task) {
+        return taskRepository.save(task);
+    }
+
+    public Task updateTask(Long id, Task taskDetails) {
+        Task task = getTaskById(id);
+        task.setTitle(taskDetails.getTitle());
+        task.setDescription(taskDetails.getDescription());
+        task.setCompleted(taskDetails.isCompleted());
+        return taskRepository.save(task);
+    }
+
+    public void deleteTask(Long id) {
+        Task task = getTaskById(id);
+        taskRepository.delete(task);
+    }
+}
+```
+
+### 5. Controller
+File: `src/main/java/com/example/todolist/controller/TaskController.java`
+```java
+package com.example.todolist.controller;
+
+import com.example.todolist.model.Task;
+import com.example.todolist.service.TaskService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/tasks")
+public class TaskController {
+    private final TaskService taskService;
+
+    public TaskController(TaskService taskService) {
+        this.taskService = taskService;
+    }
+
+    @GetMapping
+    public List<Task> getAllTasks() {
+        return taskService.getAllTasks();
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Task> getTaskById(@PathVariable Long id) {
+        return ResponseEntity.ok(taskService.getTaskById(id));
+    }
+
+    @PostMapping
+    public ResponseEntity<Task> createTask(@RequestBody Task task) {
+        return ResponseEntity.ok(taskService.createTask(task));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Task> updateTask(@PathVariable Long id, @RequestBody Task taskDetails) {
+        return ResponseEntity.ok(taskService.updateTask(id, taskDetails));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
+        taskService.deleteTask(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+```
+
+## API Endpoints
+
+### Available Endpoints
+
+| Method | URL | Description | Request Body | Response |
+|--------|-----|-------------|--------------|----------|
+| GET | /api/tasks | Get all tasks | None | Array of tasks |
+| GET | /api/tasks/{id} | Get task by ID | None | Single task |
+| POST | /api/tasks | Create new task | Task object | Created task |
+| PUT | /api/tasks/{id} | Update task | Task object | Updated task |
+| DELETE | /api/tasks/{id} | Delete task | None | No content |
+
+### Testing Commands
+
+1. Get All Tasks:
+```bash
+curl http://localhost:8080/api/tasks
+```
+
+2. Get Task by ID:
+```bash
+curl http://localhost:8080/api/tasks/1
+```
+
+3. Create Task:
+```bash
+curl -X POST http://localhost:8080/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Test Task","description":"Test Description","completed":false}'
+```
+
+4. Update Task:
+```bash
+curl -X PUT http://localhost:8080/api/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Updated Task","description":"Updated Description","completed":true}'
+```
+
+5. Delete Task:
+```bash
+curl -X DELETE http://localhost:8080/api/tasks/1
+```
+
+## Build and Run
+
+### Build the Project
+```bash
+mvn clean install
+```
+
+### Run the Application
+```bash
+mvn spring-boot:run
+```
+
+### Verify Database
+```sql
+mysql -u root -p
+USE todolist;
+SELECT * FROM task;
+```
